@@ -455,6 +455,43 @@
             }
         </script>
         <script>
+            var API_BASE = '/todo-list/api';
+            var apiClient = {
+                get: function(path) {
+                    return fetch(API_BASE + path).then(function(r) {
+                        if (!r.ok) return r.json().then(function(e) { throw e; });
+                        return r.json();
+                    });
+                },
+                post: function(path, data) {
+                    return fetch(API_BASE + path, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    }).then(function(r) {
+                        if (!r.ok) return r.json().then(function(e) { throw e; });
+                        return r.json();
+                    });
+                },
+                put: function(path, data) {
+                    return fetch(API_BASE + path, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    }).then(function(r) {
+                        if (r.status === 204) return null;
+                        if (!r.ok) return r.json().then(function(e) { throw e; });
+                        return r.json();
+                    });
+                },
+                del: function(path) {
+                    return fetch(API_BASE + path, { method: 'DELETE' }).then(function(r) {
+                        if (!r.ok) return r.json().then(function(e) { throw e; });
+                    });
+                }
+            };
+        </script>
+        <script>
             // Vue instance initialization
             var app = new Vue({
                 el: '#todo-app',
@@ -476,7 +513,17 @@
                         windowWidth: document.documentElement.clientWidth,
                         slogan: this.getSlogan(),
                         isEditing: false,
-                        originalSlogan: ""
+                        originalSlogan: "",
+                        workspaces: [],
+                        projects: [],
+                        selectedWorkspace: null,
+                        selectedProject: null,
+                        currentTask: null,
+                        taskSubtasks: [],
+                        taskDependencies: [],
+                        detailPanelOpen: false,
+                        newSubtaskTitle: '',
+                        newDependencyId: null,
                     };
                 },
                 watch: {
@@ -488,7 +535,10 @@
                             todoStorage.save(todos);
                         },
                         deep: true
-                    }
+                    },
+                    selectedProject: function(proj) {
+                        if (proj) this.fetchTasks(proj.id);
+                    },
                 },
                 methods: {
                     editText() {
@@ -668,7 +718,35 @@
                     },
                     saveLanguage(lang) {
                         localStorage.setItem('uiineed-todos-lang', lang);
-                    }
+                    },
+                    fetchWorkspaces: function() {
+                        var that = this;
+                        apiClient.get('/workspaces').then(function(wss) {
+                            that.workspaces = wss;
+                        });
+                    },
+                    selectWorkspace: function(ws) {
+                        this.selectedWorkspace = ws;
+                        this.selectedProject = null;
+                        this.todos = [];
+                        this.fetchProjects(ws.id);
+                    },
+                    fetchProjects: function(wsId) {
+                        var that = this;
+                        apiClient.get('/workspaces/' + wsId + '/projects').then(function(projs) {
+                            that.projects = projs;
+                        });
+                    },
+                    selectProject: function(proj) {
+                        this.selectedProject = proj;
+                        this.fetchTasks(proj.id);
+                    },
+                    fetchTasks: function(projId) {
+                        var that = this;
+                        apiClient.get('/projects/' + projId + '/tasks').then(function(tasks) {
+                            that.todos = tasks;
+                        });
+                    },
                 },
 
                 mounted() {
@@ -682,6 +760,15 @@
                             that.windowWidth = window.fullWidth; // width
                         })()
                     };
+                    apiClient.get('/workspaces').then(function(wss) {
+                        that.workspaces = wss;
+                        if (wss.length > 0) {
+                            that.selectedWorkspace = wss[0];
+                            that.fetchProjects(wss[0].id);
+                        }
+                    }).catch(function(err) {
+                        console.error('Failed to load workspaces', err);
+                    });
                 },
 
                 directives: {
